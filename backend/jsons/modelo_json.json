@@ -1,0 +1,24 @@
+[
+    {
+        "cve": "1",
+        "published" : "",
+        "lastModified" : "",
+        "description" : "",
+        "cvss": {
+            "baseScore" : "1", 
+            "attackVector" : "null", 
+            "attackComplexity" : "null",
+            "privilegesRequired" : "null" 
+        },
+        "epss":"1",
+        "KEV" : {
+            "product": "",
+            "vulnerabilityName": "",
+            "dateAdded": "",
+            "shortDescription": "",
+            "requiredAction": "",
+            "knownRansomwareCampaignUse": ""
+        },
+        "criticality" : ""
+    }
+]
