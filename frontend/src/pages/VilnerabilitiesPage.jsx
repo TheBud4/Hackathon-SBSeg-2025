@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {Search, Filter, SortDesc, Eye, AlertTriangle, Clock, Target, ExternalLink} from 'lucide-react'
 
 const VulnerabilitiesPage = () => {
@@ -7,21 +7,75 @@ const VulnerabilitiesPage = () => {
   const [severityFilter, setSeverityFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [sortBy, setSortBy] = useState('priority_score')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortOrder, setSortOrder] = useState('desc')
 
-  const { data: vulnerabilities = [], isLoading, refetch } = useQuery({
-    queryKey: ['vulnerabilities'],
-    queryFn: async () => {
-      const response = await lumi.entities.vulnerabilities.list({
-        sort: { [sortBy]: sortOrder === 'desc' ? -1 : 1 },
-        limit: 100
-      })
-      return response.list || []
-    }
-  })
+// Dados falsos de vulnerabilidades
+const vulnerabilities = [
+    {
+        _id: '1',
+        cve_id: 'CVE-2024-12345',
+        title: 'Execução remota de código no Apache',
+        description: 'Vulnerabilidade que permite execução remota de código via requisições maliciosas.',
+        severity: 'CRITICAL',
+        status: 'NEW',
+        kev_status: true,
+        cvss_score: 9.8,
+        epss_score: 0.85,
+        priority_score: 95.2,
+        createdAt: '2024-06-01T10:00:00Z',
+        assignee: 'João Silva',
+        affected_systems: ['Apache 2.4', 'Ubuntu 22.04', 'Debian 12'],
+    },
+    {
+        _id: '2',
+        cve_id: 'CVE-2024-54321',
+        title: 'Elevação de privilégio no Windows',
+        description: 'Permite que usuários locais obtenham privilégios de administrador.',
+        severity: 'HIGH',
+        status: 'ANALYZING',
+        kev_status: false,
+        cvss_score: 8.2,
+        epss_score: 0.65,
+        priority_score: 80.5,
+        createdAt: '2024-05-28T14:30:00Z',
+        assignee: 'Maria Souza',
+        affected_systems: ['Windows 10', 'Windows Server 2019'],
+    },
+    {
+        _id: '3',
+        cve_id: 'CVE-2024-67890',
+        title: 'Vazamento de informações no nginx',
+        description: 'Informações sensíveis podem ser expostas por meio de cabeçalhos HTTP.',
+        severity: 'MEDIUM',
+        status: 'RESOLVED',
+        kev_status: false,
+        cvss_score: 6.4,
+        epss_score: 0.32,
+        priority_score: 60.1,
+        createdAt: '2024-05-15T09:20:00Z',
+        assignee: 'Carlos Lima',
+        affected_systems: ['nginx 1.18', 'CentOS 8'],
+    },
+    {
+        _id: '4',
+        cve_id: 'CVE-2024-11111',
+        title: 'Cross-site scripting em WordPress',
+        description: 'Permite execução de scripts maliciosos em páginas do WordPress.',
+        severity: 'LOW',
+        status: 'DISMISSED',
+        kev_status: false,
+        cvss_score: 4.1,
+        epss_score: 0.12,
+        priority_score: 35.7,
+        createdAt: '2024-04-30T16:45:00Z',
+        assignee: 'Ana Paula',
+        affected_systems: ['WordPress 6.0'],
+    },
+]
 
-  // Filtros aplicados
-  const filteredVulnerabilities = useMemo(() => {
+const isLoading = false
+const refetch = () => {}
+const filteredVulnerabilities = useMemo(() => {
     return vulnerabilities.filter(vuln => {
       const matchesSearch = !searchTerm || 
         vuln.cve_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -35,7 +89,7 @@ const VulnerabilitiesPage = () => {
     })
   }, [vulnerabilities, searchTerm, severityFilter, statusFilter])
 
-  const getSeverityColor = (severity: string) => {
+  const getSeverityColor = (severity) => {
     switch (severity) {
       case 'CRITICAL': return 'bg-red-100 text-red-800 border-red-200'
       case 'HIGH': return 'bg-orange-100 text-orange-800 border-orange-200'
@@ -45,7 +99,7 @@ const VulnerabilitiesPage = () => {
     }
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status) => {
     switch (status) {
       case 'NEW': return 'bg-blue-100 text-blue-800'
       case 'ANALYZING': return 'bg-purple-100 text-purple-800'
@@ -57,7 +111,7 @@ const VulnerabilitiesPage = () => {
     }
   }
 
-  const getPriorityColor = (score: number) => {
+  const getPriorityColor = (score) => {
     if (score >= 90) return 'text-red-600 font-bold'
     if (score >= 70) return 'text-orange-600 font-semibold'
     if (score >= 50) return 'text-yellow-600 font-medium'
@@ -147,7 +201,7 @@ const VulnerabilitiesPage = () => {
               onChange={(e) => {
                 const [field, order] = e.target.value.split('-')
                 setSortBy(field)
-                setSortOrder(order as 'asc' | 'desc')
+                setSortOrder(order)
                 refetch()
               }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
@@ -214,7 +268,7 @@ const VulnerabilitiesPage = () => {
                   <div className="mt-3">
                     <p className="text-xs text-gray-500 mb-1">Sistemas Afetados:</p>
                     <div className="flex flex-wrap gap-1">
-                      {vuln.affected_systems.slice(0, 3).map((system: string, index: number) => (
+                      {vuln.affected_systems.slice(0, 3).map((system, index) => (
                         <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
                           {system}
                         </span>
