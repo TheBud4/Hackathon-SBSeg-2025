@@ -60,7 +60,7 @@ def get_asset(id):
     for v in vulns_paginated.items:
         vulns_data.append({
             'id': v.id, 
-            'title': v.title, 
+            'title': v.component_name, 
             'severity': v.severity,
             'cvssv3_score': v.cvssv3_score,
             'description': v.description
