@@ -1,5 +1,4 @@
 // HomePage.js - Versão com Agregação de Dados no Frontend
-
 import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { Activity, RefreshCw } from "lucide-react";
@@ -15,6 +14,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
 
 const LoadingSkeleton = () => (
@@ -35,6 +36,25 @@ const LoadingSkeleton = () => (
 );
 
 const HomePage = () => {
+  const [trendData, setTrendData] = useState([]);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    const fetchTrend = async () => {
+      try {
+        const response = await axios.get("/api/trend");
+        setTrendData(response.data);
+        setErrorMessage(null);
+      // eslint-disable-next-line no-unused-vars
+      } catch (error) {
+        setErrorMessage("Erro ao buscar dados.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTrend();
+  }, []);
+
   // --- ESTADO ---
   // NOVO: Estado para armazenar TODOS os ativos após buscar todas as páginas
   const [allAssets, setAllAssets] = useState([]);
@@ -167,35 +187,43 @@ const HomePage = () => {
   const barChartData = useMemo(() => {
     // 1. Agrupa os dados e calcula a soma e a contagem para cada produto
     const groupedData = allAssets.reduce((acc, asset) => {
-        if (!acc[asset.product]) {
-          acc[asset.product] = { totalScore: 0, count: 0 };
-        }
-        acc[asset.product].totalScore += asset.priority_score;
-        acc[asset.product].count += 1;
-        return acc;
-      }, {});
+      if (!acc[asset.product]) {
+        acc[asset.product] = { totalScore: 0, count: 0 };
+      }
+      acc[asset.product].totalScore += asset.priority_score;
+      acc[asset.product].count += 1;
+      return acc;
+    }, {});
 
     // 2. Calcula a média para cada produto
-    const productsWithAverage = Object.keys(groupedData).map(product => ({
+    const productsWithAverage = Object.keys(groupedData).map((product) => ({
       product,
-      averagePriority: groupedData[product].totalScore / groupedData[product].count
+      averagePriority:
+        groupedData[product].totalScore / groupedData[product].count,
     }));
 
     // 3. Ordena os produtos pela maior média (descendente) e pega o Top 10
     return productsWithAverage
       .sort((a, b) => b.averagePriority - a.averagePriority)
       .slice(0, 10);
-
   }, [allAssets]);
 
-  const pieData = useMemo(() => { 
+  const pieData = useMemo(() => {
     // ... (esta parte não muda)
     const severityData = allAssets.reduce((acc, asset) => {
-        const severity = asset.priority_score > 70 ? 'Alto' : asset.priority_score > 40 ? 'Médio' : 'Baixo';
-        acc[severity] = (acc[severity] || 0) + 1;
-        return acc;
-      }, {});
-      return Object.keys(severityData).map(key => ({ name: key, value: severityData[key] }));
+      const severity =
+        asset.priority_score > 70
+          ? "Alto"
+          : asset.priority_score > 40
+          ? "Médio"
+          : "Baixo";
+      acc[severity] = (acc[severity] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.keys(severityData).map((key) => ({
+      name: key,
+      value: severityData[key],
+    }));
   }, [allAssets]);
 
   // NOVO: Paginação e Ordenação feitas no Frontend
@@ -215,6 +243,21 @@ const HomePage = () => {
   // --- RENDERIZAÇÃO ---
   if (loading) return <LoadingSkeleton />;
   if (error) return <div className="p-6 text-center text-red-500">{error}</div>;
+  if (loading) return <p>Carregando tendências...</p>;
+  if (errorMessage) return <p className="text-red-600">{errorMessage}</p>;
+  if (!trendData || trendData.length === 0)
+    return <p>Nenhuma tendência disponível.</p>;
+
+  const chartData = trendData.map((f) => ({ date: f.ds, value: f.yhat }));
+
+  const first = trendData[0].yhat;
+  const last = trendData[trendData.length - 1].yhat;
+  const percentual = (((last - first) / Math.abs(first || 1)) * 100).toFixed(2);
+  let analise = "Tendência estável.";
+  if (percentual > 5)
+    analise = `A tendência é crescer ${percentual}% nos próximos dias.`;
+  if (percentual < -5)
+    analise = `A tendência é cair ${Math.abs(percentual)}% nos próximos dias.`;
 
   return (
     <div className="p-6 space-y-8">
@@ -334,6 +377,32 @@ const HomePage = () => {
           </ResponsiveContainer>
         </div>
       </div>
+      <div className="p-6 space-y-6">
+        <h1 className="text-3xl font-bold">
+          Tendência de Vulnerabilidades Críticas
+        </h1>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#ff0000"
+              name="Previsão"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+
+        <div className="p-4 bg-gray-100 rounded-lg">
+          <p>{analise}</p>
+        </div>
+      </div>
+
       {/* Tabela agora mapeia 'paginatedAndSortedAssets' */}
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Visão Geral dos Ativos</h3>
