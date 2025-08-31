@@ -3,13 +3,13 @@ import os
 from decimal import Decimal
 import ijson
 from app import app, db
-from models import Vulnerability, Asset
+from models import Vulnerability, Asset, CVEFactors
 
 def load_data():
     data_dir = 'data_JSON'
     valid_keys = set(Vulnerability.__table__.columns.keys())
     for file in os.listdir(data_dir):
-        if file.endswith('.json'):
+        if file.endswith('.json') and not file.startswith('fatoresCVE'):
             print(f"Loading {file}")
             file_path = os.path.join(data_dir, file)
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -63,6 +63,83 @@ def load_data():
                         print(f"Committed {count} records from {file}")
                 db.session.commit()
                 print(f"Loaded {count} records from {file}")
+    
+    # Load CVE factors
+    fatores_file = os.path.join(data_dir, 'fatoresCVE_cleaned.json')
+    if os.path.exists(fatores_file):
+        print("Loading fatoresCVE_cleaned.json")
+        with open(fatores_file, 'r', encoding='utf-8') as f:
+            fatores_data = json.load(f)
+            for item in fatores_data:
+                cve_id = item.get('cve')
+                if not cve_id:
+                    continue
+                # Check if vulnerability exists by vulnerability_ids field
+                vuln = Vulnerability.query.filter_by(vulnerability_ids=cve_id).first()
+                if not vuln:
+                    continue  # Skip if no matching vulnerability
+                # Flatten cvss
+                cvss = item.get('cvss', {})
+                if cvss is None:
+                    cvss = {}
+                base_score = cvss.get('baseScore')
+                if base_score is not None:
+                    try:
+                        base_score = float(base_score)
+                    except ValueError:
+                        base_score = None
+                attack_vector = cvss.get('attackVector')
+                attack_complexity = cvss.get('attackComplexity')
+                privileges_required = cvss.get('privilegesRequired')
+                # Flags
+                flags = item.get('flags', {})
+                exposed = flags.get('exposed')
+                # EPSS
+                epss = item.get('epss')
+                if epss is not None:
+                    try:
+                        epss = float(epss)
+                    except ValueError:
+                        epss = None
+                # KEV - convert dict to JSON string if needed
+                kev = item.get('kev')
+                if kev is not None and isinstance(kev, dict):
+                    kev = json.dumps(kev)
+                # Create or update CVEFactors
+                factors = CVEFactors.query.filter_by(cve_id=cve_id).first()
+                if not factors:
+                    factors = CVEFactors(
+                        cve_id=cve_id,
+                        published=item.get('published'),
+                        last_modified=item.get('lastModified'),
+                        description=item.get('description'),
+                        base_score=base_score,
+                        attack_vector=attack_vector,
+                        attack_complexity=attack_complexity,
+                        privileges_required=privileges_required,
+                        epss=epss,
+                        kev=kev,
+                        exposed=exposed,
+                        criticality=item.get('criticality'),
+                        ativo=item.get('ativo')
+                    )
+                    db.session.add(factors)
+                else:
+                    # Update if needed
+                    factors.published = item.get('published')
+                    factors.last_modified = item.get('lastModified')
+                    factors.description = item.get('description')
+                    factors.base_score = base_score
+                    factors.attack_vector = attack_vector
+                    factors.attack_complexity = attack_complexity
+                    factors.privileges_required = privileges_required
+                    factors.epss = epss
+                    factors.kev = kev
+                    factors.exposed = exposed
+                    factors.criticality = item.get('criticality')
+                    factors.ativo = item.get('ativo')
+            db.session.commit()
+            print(f"Loaded {len(fatores_data)} CVE factors.")
     
     # Merge any potential duplicate assets
     print("Checking for duplicate assets...")
