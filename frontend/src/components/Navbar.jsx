@@ -28,13 +28,15 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center space-x-3">
               {/* ESTE É O BLOCO DO NOVO LOGO */}
-              <img 
-                src={logoVulnAnalyzer} 
-                alt="Logo VulnAnalyzer" 
+              <img
+                src={logoVulnAnalyzer}
+                alt="Logo VulnAnalyzer"
                 className="h-10 w-auto" // Ajuste a altura (h-10) conforme necessário
               />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">VulnAnalyzer</h1>
+                <h1 className="text-xl font-bold text-gray-900">
+                  SPV - Analise de Vulnerabilidades
+                </h1>
                 <p className="text-xs text-gray-500">Plataforma de Análise</p>
               </div>
             </Link>
@@ -43,21 +45,21 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">
             {navigation.map((item) => {
-              const Icon = item.icon
+              const Icon = item.icon;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isActive(item.href)
-                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      ? "bg-blue-100 text-blue-700 border border-blue-200"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.name}</span>
                 </Link>
-              )
+              );
             })}
           </div>
 
@@ -82,7 +84,7 @@ const Navbar = () => {
         <div className="md:hidden bg-white border-t border-gray-200">
           <div className="px-2 pt-2 pb-3 space-y-1">
             {navigation.map((item) => {
-              const Icon = item.icon
+              const Icon = item.icon;
               return (
                 <Link
                   key={item.name}
@@ -90,20 +92,20 @@ const Navbar = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`flex items-center space-x-3 px-3 py-2 rounded-md text-base font-medium transition-colors ${
                     isActive(item.href)
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   }`}
                 >
                   <Icon className="h-5 w-5" />
                   <span>{item.name}</span>
                 </Link>
-              )
+              );
             })}
           </div>
         </div>
       )}
     </nav>
-  )
+  );
 }
 
 export default Navbar
