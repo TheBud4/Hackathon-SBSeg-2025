@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, json
+from modelos.trend_analysis import predict_trend
 from flask_cors import CORS
 from config import Config
 from models import db, Vulnerability, Asset, CVEFactors
@@ -47,6 +48,7 @@ def get_assets():
         }
     })
 
+
 @app.route('/assets/<int:id>', methods=['GET'])
 def get_asset(id):
     asset = Asset.query.get_or_404(id)
@@ -93,6 +95,18 @@ def get_cve_factors():
 def get_cve_factor(id):
     cve_factor = CVEFactors.query.get_or_404(id)
     return jsonify(cve_factor.to_dict())
+
+from flask import Response
+import json
+
+@app.route('/api/trend', methods=['GET'])
+def get_trend():
+    json_file = 'data_JSON/CPBR_produto2.json'
+    trend = predict_trend(json_file, periods=30)
+    return jsonify(trend)
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
