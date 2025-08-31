@@ -1,118 +1,131 @@
-import json
 import os
-from decimal import Decimal
 import ijson
 from app import app, db
 from models import Vulnerability, Asset
 
 def load_data():
     data_dir = 'data_JSON'
-    valid_keys = set(Vulnerability.__table__.columns.keys())
+    
+    # Cache de assets para evitar múltiplas queries ao banco
+    asset_cache = {asset.name: asset for asset in Asset.query.all()}
+
     for file in os.listdir(data_dir):
         if file.endswith('.json'):
-            print(f"Loading {file}")
+            print(f"Carregando {file}...")
             file_path = os.path.join(data_dir, file)
             with open(file_path, 'r', encoding='utf-8') as f:
                 count = 0
                 for item in ijson.items(f, 'item'):
-                    # Filter to valid columns and exclude Unnamed
-                    filtered_item = {k: v for k, v in item.items() if k in valid_keys and not k.startswith('Unnamed')}
-                    if not filtered_item.get('id'):
-                        continue  # Skip items without id
-                    # Convert Decimal to float
-                    for k, v in filtered_item.items():
-                        if isinstance(v, Decimal):
-                            filtered_item[k] = float(v)
-                    
-                    # Create or get asset
-                    component_name = filtered_item.get('component_name')
-                    component_version = filtered_item.get('component_version')
-                    file_path_val = filtered_item.get('file_path')
-                    engagement = filtered_item.get('engagement')
-                    
-                    if component_name:
-                        asset = Asset.query.filter_by(name=component_name, version=component_version).first()
-                        if not asset:
-                            # Format product
-                            parts = component_name.split(':')
-                            if len(parts) > 1:
-                                artifact = parts[-1]
-                                formatted_product = artifact[0].upper() + artifact[1:] if artifact else component_name
-                            else:
-                                formatted_product = component_name
-                            asset = Asset(name=component_name, version=component_version, product=formatted_product, file_path=file_path_val, engagement=engagement)
-                            db.session.add(asset)
-                            db.session.flush()  # Get id
+                    if not item.get('cve'):
+                        continue # Pula se não houver CVE
+
+                    # --- Criação ou obtenção do Asset ---
+                    kev_info = item.get('kev') or {}
+                    product_name = kev_info.get('product')
+                    asset = None
+
+                    if product_name:
+                        if product_name in asset_cache:
+                            asset = asset_cache[product_name]
                         else:
-                            # Ensure product is formatted
-                            parts = component_name.split(':')
-                            if len(parts) > 1:
-                                artifact = parts[-1]
-                                formatted_product = artifact[0].upper() + artifact[1:] if artifact else component_name
-                            else:
-                                formatted_product = component_name
-                            if asset.product != formatted_product:
-                                asset.product = formatted_product
-                        filtered_item['asset_id'] = asset.id
+                            # Se não estiver no cache, verifica no banco
+                            asset = Asset.query.filter_by(name=product_name).first()
+                            if not asset:
+                                asset = Asset(name=product_name)
+                                db.session.add(asset)
+                                db.session.flush() # Para obter o ID do novo asset
+                            asset_cache[product_name] = asset
                     
-                    vuln = Vulnerability(**filtered_item)
-                    db.session.merge(vuln)  # Use merge to handle duplicates
+                    # --- Preparação dos dados da Vulnerabilidade ---
+                    cvss_info = item.get('cvss', {})
+                    flags_info = item.get('flags', {})
+                    
+                    try:
+                        cvss_score = float(cvss_info.get('baseScore')) if cvss_info.get('baseScore') else None
+                    except (ValueError, TypeError):
+                        cvss_score = None
+                        
+                    try:
+                        epss_score = float(item.get('epss')) if item.get('epss') else None
+                    except (ValueError, TypeError):
+                        epss_score = None
+
+                    vuln_data = {
+                        'cve': item.get('cve'),
+                        'published': item.get('published'),
+                        'last_modified': item.get('lastModified'),
+                        'description': item.get('description'),
+                        'cvss_base_score': cvss_score,
+                        'cvss_attack_vector': cvss_info.get('attackVector'),
+                        'cvss_attack_complexity': cvss_info.get('attackComplexity'),
+                        'cvss_privileges_required': cvss_info.get('privilegesRequired'),
+                        'epss': epss_score,
+                        'kev_vulnerability_name': kev_info.get('vulnerabilityName'),
+                        'kev_date_added': kev_info.get('dateAdded'),
+                        'kev_short_description': kev_info.get('shortDescription'),
+                        'kev_required_action': kev_info.get('requiredAction'),
+                        'kev_known_ransomware_campaign_use': kev_info.get('knownRansomwareCampaignUse'),
+                        'exposed': str(flags_info.get('exposed', 'false')).lower() == 'true',
+                        'criticality': item.get('criticality'),
+                        'active': str(item.get('ativo', 'false')).lower() == 'true',
+                        'asset_id': asset.id if asset else None
+                    }
+                    
+                    vuln = Vulnerability(**vuln_data)
+                    db.session.merge(vuln)
+                    
                     count += 1
-                    if count % 100 == 0:  # Commit every 100 to avoid large transactions
+                    if count % 200 == 0:
                         db.session.commit()
-                        print(f"Committed {count} records from {file}")
+                        print(f"Commit de {count} registros do arquivo {file}")
+                
                 db.session.commit()
-                print(f"Loaded {count} records from {file}")
-    
-    # Merge any potential duplicate assets
-    print("Checking for duplicate assets...")
-    from sqlalchemy import func
-    duplicates = db.session.query(
-        Asset.name, Asset.version, func.count(Asset.id).label('count')
-    ).group_by(Asset.name, Asset.version).having(func.count(Asset.id) > 1).all()
-    
-    if duplicates:
-        print(f"Found {len(duplicates)} duplicate groups. Merging...")
-        for name, version, count in duplicates:
-            assets = Asset.query.filter_by(name=name, version=version).all()
-            if not assets:
-                continue
-            keep_asset = min(assets, key=lambda a: a.id)
-            for asset in assets:
-                if asset.id != keep_asset.id:
-                    Vulnerability.query.filter_by(asset_id=asset.id).update({'asset_id': keep_asset.id})
-                    db.session.delete(asset)
-        db.session.commit()
-        print("Duplicates merged.")
-    else:
-        print("No duplicates found.")
-    
-    # Calculate priority scores for assets
-    print("Calculating priority scores...")
+                print(f"Finalizado. Carregados {count} registros do arquivo {file}")
+
+    print("Carga de dados concluída.")
+
+    # --- Calcular priority scores para os assets ---
+    # ESTE BLOCO FOI MOVIDO PARA DENTRO DA FUNÇÃO
+    print("Calculando scores de prioridade...")
+
+    # --- DEFINA OS PESOS (Var) DA FÓRMULA AQUI ---
+    cvss_weight = 1.0
+    epss_weight = 100.0
+    ransomware_weight = 1.5
+    kev_weight = 1.0
+
     assets = Asset.query.all()
     for asset in assets:
         vulns = asset.vulnerabilities
         if not vulns:
             asset.priority_score = 0
             continue
-        vuln_count = len(vulns)
-        criticality_sum = 0
-        severity_sum = 0
-        count_valid = 0
-        severity_map = {'Critical': 10, 'High': 7, 'Medium': 5, 'Low': 3, 'Info': 1}
+            
+        total_raw_score = 0.0
+        
         for v in vulns:
-            if v.criticality and v.criticality.isdigit():
-                criticality_sum += int(v.criticality)
-                count_valid += 1
-            if v.severity in severity_map:
-                severity_sum += severity_map[v.severity]
-        avg_criticality = criticality_sum / count_valid if count_valid else 0
-        avg_severity = severity_sum / vuln_count if vuln_count else 0
-        # Formula: 40% criticality, 40% severity, 20% vuln_count (capped at 50)
-        score = (avg_criticality / 10 * 40) + (avg_severity / 10 * 40) + (min(vuln_count, 50) / 50 * 20)
-        asset.priority_score = min(100, max(0, score))
+            cvss_basescore = v.cvss_base_score if v.cvss_base_score is not None else 0.0
+            epss = v.epss if v.epss is not None else 0.0
+            knownRansomwareCampaignUse = str(v.kev_known_ransomware_campaign_use).lower() == 'true'
+            criticality = int(v.criticality) if v.criticality and v.criticality.isdigit() else 1
+            is_kev = bool(v.kev_vulnerability_name)
+
+            cvss_term = (cvss_basescore * cvss_weight)
+            epss_term = (epss * epss_weight)
+            core_score = (cvss_term * epss_term) * criticality
+            
+            ransomware_bonus = (10 if knownRansomwareCampaignUse else 0) * ransomware_weight
+            kev_bonus = (5 if is_kev else 0) * kev_weight
+            
+            vulnerability_srb = core_score + ransomware_bonus + kev_bonus
+            total_raw_score += vulnerability_srb
+
+        final_score = total_raw_score
+        asset.priority_score = min(100, max(0, round(final_score, 2)))
+
     db.session.commit()
-    print("Priority scores calculated.")
+    print("Scores de prioridade calculados.")
+
 
 if __name__ == '__main__':
     with app.app_context():
