@@ -16,11 +16,6 @@ def get_vulnerabilities():
     vulns = Vulnerability.query.all()
     return jsonify({'vulnerabilities': [v.to_dict() for v in vulns]})
 
-@app.route('/vulnerabilities/<id>', methods=['GET'])
-def get_vulnerability(id):
-    vuln = Vulnerability.query.get_or_404(id)
-    return jsonify(vuln.to_dict())
-
 @app.route('/assets', methods=['GET'])
 def get_assets():
     page = request.args.get('page', 1, type=int)

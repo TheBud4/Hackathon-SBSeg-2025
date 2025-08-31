@@ -53,6 +53,12 @@ class Vulnerability(db.Model):
 
     cve_factors = db.relationship('CVEFactors', backref='vulnerability', uselist=False)
 
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 class CVEFactors(db.Model):
     __tablename__ = 'cve_factors'
 
