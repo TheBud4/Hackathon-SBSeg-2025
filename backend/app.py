@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from config import Config
-from models import db, Vulnerability, Asset
+from models import db, Vulnerability, Asset, CVEFactors
 
 app = Flask(__name__)
 CORS(app)
@@ -15,11 +15,6 @@ with app.app_context():
 def get_vulnerabilities():
     vulns = Vulnerability.query.all()
     return jsonify({'vulnerabilities': [v.to_dict() for v in vulns]})
-
-@app.route('/vulnerabilities/<id>', methods=['GET'])
-def get_vulnerability(id):
-    vuln = Vulnerability.query.get_or_404(id)
-    return jsonify(vuln.to_dict())
 
 @app.route('/assets', methods=['GET'])
 def get_assets():
@@ -65,7 +60,7 @@ def get_asset(id):
     for v in vulns_paginated.items:
         vulns_data.append({
             'id': v.id, 
-            'title': v.title, 
+            'title': v.component_name, 
             'severity': v.severity,
             'cvssv3_score': v.cvssv3_score,
             'description': v.description
@@ -88,6 +83,16 @@ def get_asset(id):
             'has_prev': vulns_paginated.has_prev
         }
     })
+
+@app.route('/cve_factors', methods=['GET'])
+def get_cve_factors():
+    cve_factors = CVEFactors.query.order_by(CVEFactors.id).all()
+    return jsonify({'cve_factors': [cf.to_dict() for cf in cve_factors]})
+
+@app.route('/cve_factors/<int:id>', methods=['GET'])
+def get_cve_factor(id):
+    cve_factor = CVEFactors.query.get_or_404(id)
+    return jsonify(cve_factor.to_dict())
 
 if __name__ == '__main__':
     app.run(debug=True)
