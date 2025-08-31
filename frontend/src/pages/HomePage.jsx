@@ -264,7 +264,7 @@ const HomePage = () => {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            BluePriori Dashboard
+            SPV - Dashboard
           </h1>
           <p className="text-gray-600 mt-2">
             Visão geral da segurança e análise de ativos
