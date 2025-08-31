@@ -24,8 +24,6 @@ const VulnerabilityDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  console.log('ID da URL:', id);
-
   useEffect(() => {
     const fetchVulnerabilityDetail = async () => {
       try {
@@ -35,38 +33,22 @@ const VulnerabilityDetail = () => {
         const vulnResponse = await axios.get("http://127.0.0.1:5000/vulnerabilities");
         const vulnerabilities = vulnResponse.data.vulnerabilities || [];
 
-        console.log('Vulnerabilidades retornadas da API:', vulnerabilities.map(v => ({ id: v.id, title: v.title })));
-        console.log('Total de vulnerabilidades:', vulnerabilities.length);
-
-        // DEBUG: Verificar tipos de dados
-        console.log('=== DEBUG ID MATCHING ===');
-        console.log('ID da URL (tipo):', id, '(', typeof id, ')');
-        console.log('Primeiros 5 IDs das vulnerabilidades:', vulnerabilities.slice(0, 5).map(v => ({ id: v.id, tipo: typeof v.id })));
-        console.log('IDs únicos das vulnerabilidades:', [...new Set(vulnerabilities.map(v => v.id))].slice(0, 10));
-
         // Tentar diferentes formas de matching
         let vuln = vulnerabilities.find(v => v.id === id);
-        console.log('Tentativa 1 - v.id === id:', vuln ? 'ENCONTRADO' : 'NÃO ENCONTRADO');
 
         if (!vuln) {
           vuln = vulnerabilities.find(v => String(v.id) === String(id));
-          console.log('Tentativa 2 - String(v.id) === String(id):', vuln ? 'ENCONTRADO' : 'NÃO ENCONTRADO');
         }
 
         if (!vuln) {
           vuln = vulnerabilities.find(v => v._id === id);
-          console.log('Tentativa 3 - v._id === id:', vuln ? 'ENCONTRADO' : 'NÃO ENCONTRADO');
         }
 
         if (!vuln) {
           vuln = vulnerabilities.find(v => String(v._id) === String(id));
-          console.log('Tentativa 4 - String(v._id) === String(id):', vuln ? 'ENCONTRADO' : 'NÃO ENCONTRADO');
         }
 
-        console.log('Resultado final da busca:', vuln ? { id: vuln.id, _id: vuln._id, title: vuln.title } : 'VULNERABILIDADE NÃO ENCONTRADA');
-
         // Encontrar a vulnerabilidade específica
-        console.log('Vulnerabilidade que será processada:', vuln ? vuln.id : 'NENHUMA');
         if (!vuln) {
           throw new Error('Vulnerabilidade não encontrada');
         }
@@ -75,21 +57,17 @@ const VulnerabilityDetail = () => {
         const assetsResponse = await axios.get("http://127.0.0.1:5000/assets");
         const assets = assetsResponse.data.assets || [];
 
-        console.log('Assets retornados da API:', assets.map(a => ({ name: a.name, version: a.version, priority_score: a.priority_score })));
-        console.log('Total de assets:', assets.length);
-
         // Tentar encontrar asset relacionado
         let relatedAsset = null;
-        if (vuln.component_name && vuln.component_version) {
-          const assetKey = `${vuln.component_name}:${vuln.component_version}`;
-          relatedAsset = assets.find(asset => `${asset.name}:${asset.version}` === assetKey);
+        if (vuln.component_name) {
+          relatedAsset = assets.find(asset => asset.name === vuln.component_name);
         }
 
         // Mapear dados da vulnerabilidade
         const mappedVulnerability = {
           _id: vuln.id,
           cve_id: vuln.vulnerability_ids,
-          title: vuln.title,
+          title: vuln.title || vuln.description?.split('.')[0] || `Vulnerabilidade ${vuln.vulnerability_ids}`,
           description: vuln.description,
           severity: vuln.severity ? vuln.severity.toUpperCase() : "UNKNOWN",
           status: mapStatus(vuln),
@@ -100,31 +78,16 @@ const VulnerabilityDetail = () => {
           affected_systems: vuln.component_name && vuln.component_version ? [`${vuln.component_name}:${vuln.component_version}`] : [],
           component_name: vuln.component_name,
           component_version: vuln.component_version,
-          attack_vector: vuln.attack_vector || "Não informado",
-          exploitability: vuln.exploitability || "Não informado",
-          business_impact: vuln.business_impact || "Não informado",
-          remediation_effort: vuln.remediation_effort || "Não informado",
-          epss_score: vuln.epss_score || 0,
-          kev_status: vuln.kev_status || false,
-          recommendations: vuln.recommendations || [],
-          tags: vuln.tags || [],
-          scanner_data: vuln.scanner_data || null,
-          ml_features: vuln.ml_features || null,
-          analyzedAt: vuln.analyzed_at,
-          updatedAt: vuln.updated_at,
+          mitigation: vuln.mitigation,
+          references: vuln.references,
+          cwe: vuln.cwe,
+          impact: vuln.impact,
+          file_path: vuln.file_path,
+          updatedAt: vuln.last_status_update || vuln.created,
         };
 
         setVulnerability(mappedVulnerability);
         setAssetInfo(relatedAsset);
-
-        console.log('Vulnerabilidade mapeada com sucesso:', {
-          id: mappedVulnerability._id,
-          cve_id: mappedVulnerability.cve_id,
-          title: mappedVulnerability.title,
-          severity: mappedVulnerability.severity,
-          priority_score: mappedVulnerability.priority_score
-        });
-        console.log('Asset relacionado encontrado:', relatedAsset ? { name: relatedAsset.name, version: relatedAsset.version } : 'Nenhum asset relacionado');
 
       } catch (err) {
         setError(err.message || "Erro ao buscar vulnerabilidade");
@@ -249,8 +212,8 @@ const VulnerabilityDetail = () => {
             <span>Voltar</span>
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{vulnerability.cve_id}</h1>
-            <p className="text-gray-600 mt-1">{vulnerability.title}</p>
+            <h1 className="text-3xl font-bold text-gray-900">{vulnerability.cve_id || "Não informado"}</h1>
+            <p className="text-gray-600 mt-1">{vulnerability.title || "Não informado"}</p>
           </div>
         </div>
 
@@ -272,7 +235,7 @@ const VulnerabilityDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Severidade</p>
               <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium border mt-1 ${getSeverityColor(vulnerability.severity || '')}`}>
-                {vulnerability.severity}
+                {vulnerability.severity || "Não informado"}
               </span>
             </div>
             <AlertTriangle className="h-8 w-8 text-red-500" />
@@ -284,7 +247,7 @@ const VulnerabilityDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Status</p>
               <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mt-1 ${getStatusColor(vulnerability.status || '')}`}>
-                {vulnerability.status?.replace('_', ' ')}
+                {vulnerability.status?.replace('_', ' ') || "Não informado"}
               </span>
             </div>
             <Activity className="h-8 w-8 text-blue-500" />
@@ -295,7 +258,7 @@ const VulnerabilityDetail = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Score CVSS</p>
-              <p className="text-2xl font-bold text-gray-900">{vulnerability.cvss_score}</p>
+              <p className="text-2xl font-bold text-gray-900">{vulnerability.cvss_score || "Não informado"}</p>
             </div>
             <Shield className="h-8 w-8 text-orange-500" />
           </div>
@@ -306,7 +269,7 @@ const VulnerabilityDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Prioridade ML</p>
               <p className={`text-2xl font-bold ${getPriorityColor(vulnerability.priority_score || 0)}`}>
-                {vulnerability.priority_score?.toFixed(1)}
+                {vulnerability.priority_score?.toFixed(1) || "Não informado"}
               </p>
             </div>
             <TrendingUp className="h-8 w-8 text-purple-500" />
@@ -321,7 +284,7 @@ const VulnerabilityDetail = () => {
           {/* Descrição */}
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">Descrição</h3>
-            <p className="text-gray-700 leading-relaxed">{vulnerability.description}</p>
+            <p className="text-gray-700 leading-relaxed">{vulnerability.description || "Não informado"}</p>
           </div>
 
           {/* Análise de Risco */}
@@ -333,48 +296,15 @@ const VulnerabilityDetail = () => {
                   <div className={`w-4 h-4 rounded-full ${riskLevel.color}`}></div>
                   <span className="font-medium">Nível de Risco: {riskLevel.level}</span>
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Vetor de Ataque:</span>
-                    <span className="text-sm font-medium">{vulnerability.attack_vector}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Exploitabilidade:</span>
-                    <span className="text-sm font-medium">{vulnerability.exploitability}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Impacto no Negócio:</span>
-                    <span className="text-sm font-medium">{vulnerability.business_impact}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Esforço de Remediação:</span>
-                    <span className="text-sm font-medium">{vulnerability.remediation_effort}</span>
-                  </div>
-                </div>
               </div>
 
               <div>
                 <h4 className="font-medium mb-3">Métricas de Threat Intelligence</h4>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Score EPSS:</span>
-                    <span className="text-sm font-medium">
-                      {((vulnerability.epss_score || 0) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">KEV Status:</span>
-                    <span className={`text-sm font-medium ${vulnerability.kev_status ? 'text-red-600' : 'text-green-600'}`}>
-                      {vulnerability.kev_status ? 'Listado' : 'Não Listado'}
-                    </span>
-                  </div>
-                  {vulnerability.scanner_data?.cvss_v3?.vector && (
+                  {vulnerability.cvss_score > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">CVSS Vector:</span>
-                      <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
-                        {vulnerability.scanner_data.cvss_v3.vector}
-                      </span>
+                      <span className="text-sm text-gray-600">CVSS Score:</span>
+                      <span className="text-sm font-medium">{vulnerability.cvss_score}</span>
                     </div>
                   )}
                 </div>
@@ -397,47 +327,42 @@ const VulnerabilityDetail = () => {
             </div>
           )}
 
-          {/* Recomendações */}
-          {vulnerability.recommendations && vulnerability.recommendations.length > 0 && (
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Recomendações de Remediação</h3>
-              <div className="space-y-3">
-                {vulnerability.recommendations.map((rec, index) => (
-                  <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
-                    <CheckCircle className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-sm text-blue-900">{rec}</span>
-                  </div>
-                ))}
-              </div>
+                    {/* Detalhes Técnicos */}
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-4">Detalhes Técnicos</h3>
+            <div className="space-y-3">
+              {vulnerability.cwe && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">CWE:</span>
+                  <span className="text-sm font-medium">{vulnerability.cwe || "Não informado"}</span>
+                </div>
+              )}
+              {vulnerability.impact && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Impacto:</span>
+                  <span className="text-sm font-medium">{vulnerability.impact || "Não informado"}</span>
+                </div>
+              )}
+              {vulnerability.file_path && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Caminho do Arquivo:</span>
+                  <span className="text-sm font-medium">{vulnerability.file_path || "Não informado"}</span>
+                </div>
+              )}
+              {vulnerability.mitigation && (
+                <div>
+                  <span className="text-sm text-gray-600">Mitigação:</span>
+                  <p className="text-sm font-medium mt-1">{vulnerability.mitigation || "Não informado"}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Features ML */}
-          {vulnerability.ml_features && (
+          {/* Referências */}
+          {vulnerability.references && (
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Características para Machine Learning</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Disponibilidade de Exploit:</span>
-                    <span className="text-sm font-medium">{vulnerability.ml_features.exploit_availability}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Idade do Patch (dias):</span>
-                    <span className="text-sm font-medium">{vulnerability.ml_features.patch_age_days}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Criticidade do Ativo:</span>
-                    <span className="text-sm font-medium">{vulnerability.ml_features.asset_criticality}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Exposição de Rede:</span>
-                    <span className="text-sm font-medium">{vulnerability.ml_features.network_exposure}</span>
-                  </div>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">Referências</h3>
+              <div className="text-sm text-gray-700 whitespace-pre-line">{vulnerability.references || "Não informado"}</div>
             </div>
           )}
         </div>
@@ -450,12 +375,28 @@ const VulnerabilityDetail = () => {
               <h3 className="text-lg font-semibold mb-4">Informações do Asset</h3>
               <div className="space-y-3">
                 <div>
+                  <p className="text-sm text-gray-600">ID</p>
+                  <p className="font-medium">{assetInfo.id || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Nome</p>
+                  <p className="font-medium">{assetInfo.name || "Não informado"}</p>
+                </div>
+                <div>
                   <p className="text-sm text-gray-600">Produto</p>
-                  <p className="font-medium">{assetInfo.product}</p>
+                  <p className="font-medium">{assetInfo.product || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Versão</p>
+                  <p className="font-medium">{assetInfo.version || "Não informado"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Vulnerabilidades no Asset</p>
-                  <p className="font-medium">{assetInfo.vulnerabilities_count}</p>
+                  <p className="font-medium">{assetInfo.vulnerabilities_count || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Score de Prioridade</p>
+                  <p className="font-medium">{assetInfo.priority_score?.toFixed(2) || "Não informado"}</p>
                 </div>
               </div>
             </div>
@@ -469,7 +410,7 @@ const VulnerabilityDetail = () => {
                 <label className="text-sm text-gray-600">Responsável</label>
                 <div className="flex items-center space-x-2 mt-1">
                   <User className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm">{vulnerability.assignee || 'Não atribuído'}</span>
+                  <span className="text-sm">{vulnerability.assignee || 'Não informado'}</span>
                 </div>
               </div>
             </div>
@@ -483,43 +424,19 @@ const VulnerabilityDetail = () => {
                 <Clock className="h-4 w-4 text-gray-400" />
                 <div>
                   <p className="text-xs text-gray-500">Detectada em</p>
-                  <p className="text-sm">{new Date(vulnerability.createdAt).toLocaleString()}</p>
+                  <p className="text-sm">{vulnerability.createdAt ? new Date(vulnerability.createdAt).toLocaleString() : "Não informado"}</p>
                 </div>
               </div>
-
-              {vulnerability.analyzedAt && (
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-gray-400" />
-                  <div>
-                    <p className="text-xs text-gray-500">Analisada em</p>
-                    <p className="text-sm">{new Date(vulnerability.analyzedAt).toLocaleString()}</p>
-                  </div>
-                </div>
-              )}
 
               <div className="flex items-center space-x-2">
                 <Activity className="h-4 w-4 text-gray-400" />
                 <div>
                   <p className="text-xs text-gray-500">Última atualização</p>
-                  <p className="text-sm">{new Date(vulnerability.updatedAt).toLocaleString()}</p>
+                  <p className="text-sm">{vulnerability.updatedAt ? new Date(vulnerability.updatedAt).toLocaleString() : "Não informado"}</p>
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Tags */}
-          {vulnerability.tags && vulnerability.tags.length > 0 && (
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Tags</h3>
-              <div className="flex flex-wrap gap-2">
-                {vulnerability.tags.map((tag, index) => (
-                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Links Externos */}
           <div className="card">
