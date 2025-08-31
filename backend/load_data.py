@@ -27,16 +27,32 @@ def load_data():
                     # Create or get asset
                     component_name = filtered_item.get('component_name')
                     component_version = filtered_item.get('component_version')
-                    product = filtered_item.get('product')
                     file_path_val = filtered_item.get('file_path')
                     engagement = filtered_item.get('engagement')
                     
-                    if component_name and product:
-                        asset = Asset.query.filter_by(name=component_name, version=component_version, product=product).first()
+                    if component_name:
+                        asset = Asset.query.filter_by(name=component_name, version=component_version).first()
                         if not asset:
-                            asset = Asset(name=component_name, version=component_version, product=product, file_path=file_path_val, engagement=engagement)
+                            # Format product
+                            parts = component_name.split(':')
+                            if len(parts) > 1:
+                                artifact = parts[-1]
+                                formatted_product = artifact[0].upper() + artifact[1:] if artifact else component_name
+                            else:
+                                formatted_product = component_name
+                            asset = Asset(name=component_name, version=component_version, product=formatted_product, file_path=file_path_val, engagement=engagement)
                             db.session.add(asset)
                             db.session.flush()  # Get id
+                        else:
+                            # Ensure product is formatted
+                            parts = component_name.split(':')
+                            if len(parts) > 1:
+                                artifact = parts[-1]
+                                formatted_product = artifact[0].upper() + artifact[1:] if artifact else component_name
+                            else:
+                                formatted_product = component_name
+                            if asset.product != formatted_product:
+                                asset.product = formatted_product
                         filtered_item['asset_id'] = asset.id
                     
                     vuln = Vulnerability(**filtered_item)
@@ -47,6 +63,29 @@ def load_data():
                         print(f"Committed {count} records from {file}")
                 db.session.commit()
                 print(f"Loaded {count} records from {file}")
+    
+    # Merge any potential duplicate assets
+    print("Checking for duplicate assets...")
+    from sqlalchemy import func
+    duplicates = db.session.query(
+        Asset.name, Asset.version, func.count(Asset.id).label('count')
+    ).group_by(Asset.name, Asset.version).having(func.count(Asset.id) > 1).all()
+    
+    if duplicates:
+        print(f"Found {len(duplicates)} duplicate groups. Merging...")
+        for name, version, count in duplicates:
+            assets = Asset.query.filter_by(name=name, version=version).all()
+            if not assets:
+                continue
+            keep_asset = min(assets, key=lambda a: a.id)
+            for asset in assets:
+                if asset.id != keep_asset.id:
+                    Vulnerability.query.filter_by(asset_id=asset.id).update({'asset_id': keep_asset.id})
+                    db.session.delete(asset)
+        db.session.commit()
+        print("Duplicates merged.")
+    else:
+        print("No duplicates found.")
     
     # Calculate priority scores for assets
     print("Calculating priority scores...")
