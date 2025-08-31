@@ -19,7 +19,5 @@
             "requiredAction": "",
             "knownRansomwareCampaignUse": ""
         },
-        "criticality" : "",
-        "ativo": ""
+        "criticality" : ""
     }
-]
