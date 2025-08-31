@@ -19,6 +19,7 @@ class Vulnerability(db.Model):
     __tablename__ = 'vulnerabilities'
 
     id = db.Column(db.String, primary_key=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'))
     criticality = db.Column(db.String)
     active = db.Column(db.String)
     component_name = db.Column(db.String)
@@ -48,6 +49,30 @@ class Vulnerability(db.Model):
     scanner_confidence = db.Column(db.String)
     service = db.Column(db.String)
     severity = db.Column(db.String)
+    vulnerability_ids = db.Column(db.String)
+
+    cve_factors = db.relationship('CVEFactors', backref='vulnerability', uselist=False)
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class CVEFactors(db.Model):
+    __tablename__ = 'cve_factors'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cve_id = db.Column(db.String, db.ForeignKey('vulnerabilities.id'), unique=True)
+    published = db.Column(db.String)
+    last_modified = db.Column(db.String)
+    description = db.Column(db.Text)
+    base_score = db.Column(db.Float)
+    attack_vector = db.Column(db.String)
+    attack_complexity = db.Column(db.String)
+    privileges_required = db.Column(db.String)
+    epss = db.Column(db.Float)
+    kev = db.Column(db.String)
+    exposed = db.Column(db.String)
+    criticality = db.Column(db.String)
+    ativo = db.Column(db.String)
     sla_age = db.Column(db.String)
     sla_days_remaining = db.Column(db.String)
     sla_deadline = db.Column(db.String)

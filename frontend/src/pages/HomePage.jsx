@@ -1,11 +1,8 @@
-// HomePage.js - Versão Integrada
+// HomePage.js - Versão com Agregação de Dados no Frontend
 
 import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
-import {
-  Activity,
-  RefreshCw,
-} from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,7 +17,6 @@ import {
   Cell,
 } from "recharts";
 
-// Componente para o esqueleto de carregamento (mantido do seu código original)
 const LoadingSkeleton = () => (
   <div className="p-6">
     <div className="animate-pulse space-y-6">
@@ -31,16 +27,23 @@ const LoadingSkeleton = () => (
         ))}
       </div>
       <div className="h-96 bg-gray-200 rounded-xl"></div>
+      <p className="text-center text-gray-500 mt-4">
+        Carregando todos os dados. Isso pode levar um momento...
+      </p>
     </div>
   </div>
 );
 
 const HomePage = () => {
-  // --- ESTADO UNIFICADO (LÓGICA DO App.js) ---
-  const [assets, setAssets] = useState([]);
-  const [pagination, setPagination] = useState({});
+  // --- ESTADO ---
+  // NOVO: Estado para armazenar TODOS os ativos após buscar todas as páginas
+  const [allAssets, setAllAssets] = useState([]);
+
+  // MODIFICADO: 'loading' agora representa a busca inicial completa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Estados para controle da tabela e modal (permanecem os mesmos)
   const [sortKey, setSortKey] = useState("priority_score");
   const [sortDirection, setSortDirection] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -48,29 +51,60 @@ const HomePage = () => {
   const [assetDetails, setAssetDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // --- FUNÇÕES DE BUSCA DE DADOS (LÓGICA DO App.js) ---
-  const fetchAssets = async (page = 1) => {
-    setLoading(true);
-    setError(null); // Limpa erros anteriores
-    try {
-      const response = await axios.get(
-        `http://localhost:5000/assets?page=${page}&per_page=10`
-      );
-      setAssets(response.data.assets);
-      setPagination(response.data.pagination);
-      setCurrentPage(page);
-    } catch (err) {
-      setError("Falha ao carregar dados do backend.");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const ITEMS_PER_PAGE = 10;
 
+  // --- LÓGICA DE BUSCA DE DADOS MODIFICADA ---
+  useEffect(() => {
+    const fetchAllData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1. Faz a primeira chamada para pegar a paginação e os primeiros ativos
+        const initialResponse = await axios.get(
+          `http://localhost:5000/assets?page=1&per_page=${ITEMS_PER_PAGE}`
+        );
+        const firstPageAssets = initialResponse.data.assets;
+        const totalPages = initialResponse.data.pagination.pages;
+
+        // Se houver mais de uma página, busca as restantes
+        if (totalPages > 1) {
+          // 2. Cria um array de promessas para as páginas restantes
+          const pagePromises = [];
+          for (let page = 2; page <= totalPages; page++) {
+            pagePromises.push(
+              axios.get(
+                `http://localhost:5000/assets?page=${page}&per_page=${ITEMS_PER_PAGE}`
+              )
+            );
+          }
+
+          // 3. Executa todas as chamadas em paralelo
+          const remainingResponses = await Promise.all(pagePromises);
+          const remainingAssets = remainingResponses.flatMap(
+            (res) => res.data.assets
+          );
+
+          // 4. Combina tudo e atualiza o estado
+          setAllAssets([...firstPageAssets, ...remainingAssets]);
+        } else {
+          setAllAssets(firstPageAssets);
+        }
+      } catch (err) {
+        setError("Falha ao carregar dados do backend.");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAllData();
+  }, []); // Executa apenas uma vez ao montar o componente
+
+  // Função de buscar detalhes do ativo (permanece a mesma)
   const fetchAssetDetails = async (assetId) => {
+    /* ... */
     setDetailsLoading(true);
     try {
-      // A paginação no detalhe pode não ser necessária, removido por simplicidade
       const response = await axios.get(
         `http://localhost:5000/assets/${assetId}`
       );
@@ -82,13 +116,13 @@ const HomePage = () => {
     }
   };
 
-  useEffect(() => {
-    fetchAssets(1); // Carrega a primeira página ao montar o componente
-  }, []);
-
-  // --- HANDLERS DE INTERAÇÃO (LÓGICA DO App.js) ---
-  const handleRefresh = () => fetchAssets(currentPage);
-  const handlePageChange = (page) => fetchAssets(page);
+  // --- HANDLERS ---
+  const handleRefresh = () => {
+    window.location.reload();
+  }; // A forma mais simples de recarregar tudo
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  }; // Agora apenas muda o estado local
   const handleAssetClick = (asset) => {
     setSelectedAsset(asset);
     fetchAssetDetails(asset.id);
@@ -98,6 +132,7 @@ const HomePage = () => {
     setAssetDetails(null);
   };
   const handleSort = (key) => {
+    /* ... */
     if (sortKey === key) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -106,84 +141,85 @@ const HomePage = () => {
     }
   };
 
-  // --- PROCESSAMENTO DE DADOS PARA GRÁFICOS E MÉTRICAS (LÓGICA DO App.js ADAPTADA) ---
+  // --- PROCESSAMENTO DE DADOS (AGORA USANDO 'allAssets') ---
 
-  // 1. Métricas para os Cards
+  // 1. Métricas para os Cards (calculado sobre todos os dados)
   const metrics = useMemo(() => {
-    if (!assets || assets.length === 0) {
+    if (!allAssets || allAssets.length === 0)
       return { total: 0, critical: 0, high: 0, avgPriority: 0 };
-    }
-    const total = pagination.total || assets.length; // Usa o total da paginação se disponível
-    const critical = assets.filter((a) => a.priority_score >= 90).length;
-    const high = assets.filter(
+
+    const critical = allAssets.filter((a) => a.priority_score >= 90).length;
+    const high = allAssets.filter(
       (a) => a.priority_score >= 70 && a.priority_score < 90
     ).length;
     const avgPriority =
-      assets.reduce((acc, v) => acc + (v.priority_score || 0), 0) /
-      assets.length;
+      allAssets.reduce((acc, v) => acc + (v.priority_score || 0), 0) /
+      allAssets.length;
+
     return {
-      total,
+      total: allAssets.length,
       critical,
       high,
       avgPriority: Math.round(avgPriority * 10) / 10,
     };
-  }, [assets, pagination]);
+  }, [allAssets]);
 
-  // 2. Dados para o Gráfico de Barras
   const barChartData = useMemo(() => {
-    const groupedData = assets.reduce((acc, asset) => {
-      if (!acc[asset.product]) {
-        acc[asset.product] = { totalScore: 0, count: 0 };
-      }
-      acc[asset.product].totalScore += asset.priority_score;
-      acc[asset.product].count += 1;
-      return acc;
-    }, {});
-    return Object.keys(groupedData).map((product) => ({
+    // 1. Agrupa os dados e calcula a soma e a contagem para cada produto
+    const groupedData = allAssets.reduce((acc, asset) => {
+        if (!acc[asset.product]) {
+          acc[asset.product] = { totalScore: 0, count: 0 };
+        }
+        acc[asset.product].totalScore += asset.priority_score;
+        acc[asset.product].count += 1;
+        return acc;
+      }, {});
+
+    // 2. Calcula a média para cada produto
+    const productsWithAverage = Object.keys(groupedData).map(product => ({
       product,
-      averagePriority:
-        groupedData[product].totalScore / groupedData[product].count,
+      averagePriority: groupedData[product].totalScore / groupedData[product].count
     }));
-  }, [assets]);
 
-  // 3. Dados para o Gráfico de Pizza
-  const pieData = useMemo(() => {
-    const severityData = assets.reduce((acc, asset) => {
-      const severity =
-        asset.priority_score > 70
-          ? "Alto"
-          : asset.priority_score > 40
-          ? "Médio"
-          : "Baixo";
-      acc[severity] = (acc[severity] || 0) + 1;
-      return acc;
-    }, {});
-    return Object.keys(severityData).map((key) => ({
-      name: key,
-      value: severityData[key],
-    }));
-  }, [assets]);
+    // 3. Ordena os produtos pela maior média (descendente) e pega o Top 10
+    return productsWithAverage
+      .sort((a, b) => b.averagePriority - a.averagePriority)
+      .slice(0, 10);
 
-  const PIE_COLORS = { Alto: "#dc2626", Médio: "#ca8a04", Baixo: "#16a34a" };
+  }, [allAssets]);
 
-  // 4. Ordenação dos Ativos para a Tabela
-  const sortedAssets = useMemo(
-    () =>
-      [...assets].sort((a, b) => {
+  const pieData = useMemo(() => { 
+    // ... (esta parte não muda)
+    const severityData = allAssets.reduce((acc, asset) => {
+        const severity = asset.priority_score > 70 ? 'Alto' : asset.priority_score > 40 ? 'Médio' : 'Baixo';
+        acc[severity] = (acc[severity] || 0) + 1;
+        return acc;
+      }, {});
+      return Object.keys(severityData).map(key => ({ name: key, value: severityData[key] }));
+  }, [allAssets]);
+
+  // NOVO: Paginação e Ordenação feitas no Frontend
+  const paginatedAndSortedAssets = useMemo(() => {
+    return [...allAssets]
+      .sort((a, b) => {
         if (a[sortKey] < b[sortKey]) return sortDirection === "asc" ? -1 : 1;
         if (a[sortKey] > b[sortKey]) return sortDirection === "asc" ? 1 : -1;
         return 0;
-      }),
-    [assets, sortKey, sortDirection]
-  );
+      })
+      .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  }, [allAssets, sortKey, sortDirection, currentPage]);
+
+  const PIE_COLORS = { Alto: "#dc2626", Médio: "#ca8a04", Baixo: "#16a34a" };
+  const totalPages = Math.ceil(allAssets.length / ITEMS_PER_PAGE);
 
   // --- RENDERIZAÇÃO ---
-  if (loading && currentPage === 1) return <LoadingSkeleton />;
+  if (loading) return <LoadingSkeleton />;
   if (error) return <div className="p-6 text-center text-red-500">{error}</div>;
 
   return (
     <div className="p-6 space-y-8">
-      {/* Header */}
+      {/* Header e Cards usam 'metrics', que agora são globais */}
+      {/* ... (o JSX do header e dos cards não muda) ... */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
@@ -206,12 +242,10 @@ const HomePage = () => {
             <RefreshCw
               className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
             />
-            {loading ? "Atualizando..." : "Atualizar"}
+            {loading ? "Atualizando..." : "Recarregar"}
           </button>
         </div>
       </div>
-
-      {/* Métricas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card bg-gradient-to-r from-red-500 to-red-600 text-white">
           <p className="text-red-100 text-sm font-medium">
@@ -236,25 +270,45 @@ const HomePage = () => {
           <p className="text-3xl font-bold">{metrics.avgPriority}</p>
         </div>
       </div>
-
-      {/* Gráficos */}
+      {/* Gráficos usam dados calculados de 'allAssets' */}
+      {/* ... (o JSX dos gráficos não muda) ... */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-3 card">
           <h3 className="text-lg font-semibold mb-4">
-            Média de Score por Produto
+            Top 10 Produtos por Média de Score
           </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={barChartData}>
+          <ResponsiveContainer width="100%" height={350}>
+            {/* MODIFICADO: Adicionada margem inferior para os rótulos angulados */}
+            <BarChart
+              data={barChartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 50 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="product" />
+              {/* MODIFICADO: Rótulos do eixo X agora estão na diagonal */}
+              <XAxis
+                dataKey="product"
+                angle={-45}
+                textAnchor="end"
+                interval={0}
+                height={60}
+              />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar
-                dataKey="averagePriority"
-                name="Prioridade Média"
-                fill="#3b82f6"
-              />
+              <Bar dataKey="averagePriority" name="Prioridade Média">
+                {/* NOVO: Lógica para colorir cada barra individualmente */}
+                {barChartData.map((entry, index) => {
+                  const priority =
+                    entry.averagePriority > 70
+                      ? "Alto"
+                      : entry.averagePriority > 40
+                      ? "Médio"
+                      : "Baixo";
+                  return (
+                    <Cell key={`cell-${index}`} fill={PIE_COLORS[priority]} />
+                  );
+                })}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -280,12 +334,12 @@ const HomePage = () => {
           </ResponsiveContainer>
         </div>
       </div>
-
-      {/* Tabela de Ativos */}
+      {/* Tabela agora mapeia 'paginatedAndSortedAssets' */}
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Visão Geral dos Ativos</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left text-gray-500">
+            {/* ...cabeçalho da tabela... */}
             <thead className="text-xs text-gray-700 uppercase bg-gray-50">
               <tr>
                 {[
@@ -311,11 +365,12 @@ const HomePage = () => {
               </tr>
             </thead>
             <tbody>
-              {sortedAssets.map((asset) => (
+              {paginatedAndSortedAssets.map((asset) => (
                 <tr
                   key={asset.id}
                   className="bg-white border-b hover:bg-gray-50"
                 >
+                  {/* ...células da tabela... */}
                   <td className="px-6 py-4 font-medium text-gray-900">
                     {asset.name}
                   </td>
@@ -350,24 +405,24 @@ const HomePage = () => {
             </tbody>
           </table>
         </div>
-        {/* Paginação */}
+        {/* MODIFICADO: Paginação usa estado local */}
         <div className="flex items-center justify-between pt-4">
           <span className="text-sm text-gray-700">
-            Página <span className="font-semibold">{pagination.page}</span> de{" "}
-            <span className="font-semibold">{pagination.pages}</span> (
-            {pagination.total} ativos)
+            Página <span className="font-semibold">{currentPage}</span> de{" "}
+            <span className="font-semibold">{totalPages}</span> (
+            {allAssets.length} ativos)
           </span>
           <div className="inline-flex mt-2 xs:mt-0">
             <button
               onClick={() => handlePageChange(currentPage - 1)}
-              disabled={!pagination.has_prev}
+              disabled={currentPage <= 1}
               className="px-4 py-2 text-sm font-medium text-white bg-gray-800 rounded-l hover:bg-gray-900 disabled:bg-gray-400"
             >
               Anterior
             </button>
             <button
               onClick={() => handlePageChange(currentPage + 1)}
-              disabled={!pagination.has_next}
+              disabled={currentPage >= totalPages}
               className="px-4 py-2 text-sm font-medium text-white bg-gray-800 border-0 border-l border-gray-700 rounded-r hover:bg-gray-900 disabled:bg-gray-400"
             >
               Próximo
@@ -376,8 +431,9 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Modal de Detalhes (Estilizado com Tailwind) */}
+      {/* Modal permanece o mesmo */}
       {selectedAsset && assetDetails && (
+        // ...código do modal...
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50"
           onClick={handleCloseDetails}
